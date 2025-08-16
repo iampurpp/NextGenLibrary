@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Tools | NextGen Library Hub</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+      .tools-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; }
+      .tool-card { background: rgba(255,255,255,0.08); padding:16px; border-radius:10px; }
+      .muted { color:#bbb; font-size:0.9rem; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .log { white-space: pre-wrap; font-size: 0.9rem; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; max-height: 250px; overflow:auto; }
+    </style>
+  </head>
+  <body>
+    <div class="background"><div class="shape"></div><div class="shape"></div></div>
+    <header class="lib-header">
+      <div class="logo"><i class="fas fa-tools"></i><h1>Admin Tools</h1></div>
+      <nav class="lib-nav">
+        <a href="dashboard.html"><i class="fas fa-home"></i> Dashboard</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h3><i class="fas fa-shield-alt"></i> Backfill and Verify</h3>
+        <p class="muted">You must be signed in as a librarian. These actions add missing <span class="mono">libraryId</span> to existing documents.</p>
+        <p>Library Scope: <span id="libScope" class="mono">-</span></p>
+        <div class="tools-grid">
+          <div class="tool-card">
+            <h4><i class="fas fa-user-tie"></i> Librarian Profile</h4>
+            <p>Ensure your librarian profile has <span class="mono">libraryId</span>.</p>
+            <button class="btn-student" id="fixLibrarianBtn"><i class="fas fa-id-badge"></i> Ensure libraryId</button>
+          </div>
+          <div class="tool-card">
+            <h4><i class="fas fa-book"></i> Books</h4>
+            <p>Add missing <span class="mono">libraryId</span> to books (up to 500 at a time).</p>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap: wrap; margin:6px 0;">
+              <input type="file" id="booksFile" accept=".json,.csv" />
+              <button class="btn-student" id="importBooksBtn"><i class="fas fa-file-import"></i> Import</button>
+              <button class="btn-student" id="loadSampleBtn"><i class="fas fa-database"></i> Load Sample Data</button>
+            </div>
+            <button class="btn-student" id="fixBooksBtn"><i class="fas fa-wrench"></i> Backfill Books</button>
+          </div>
+          <div class="tool-card">
+            <h4><i class="fas fa-receipt"></i> Loans</h4>
+            <p>Add missing <span class="mono">libraryId</span> to loans (up to 500).</p>
+            <button class="btn-student" id="fixLoansBtn"><i class="fas fa-wrench"></i> Backfill Loans</button>
+          </div>
+          <div class="tool-card">
+            <h4><i class="fas fa-money-bill-wave"></i> Fines</h4>
+            <p>Add missing <span class="mono">libraryId</span> to fines (up to 500).</p>
+            <button class="btn-student" id="fixFinesBtn"><i class="fas fa-wrench"></i> Backfill Fines</button>
+          </div>
+          <div class="tool-card">
+            <h4><i class="fas fa-user-graduate"></i> Students (optional)</h4>
+            <p>Optionally set <span class="mono">libraryId</span> on student profiles (up to 500).</p>
+            <button class="btn-student" id="fixStudentsBtn"><i class="fas fa-wrench"></i> Backfill Students</button>
+            <div style="margin-top:8px">
+              <button class="btn-student" id="createSampleStudentBtn"><i class="fas fa-user-plus"></i> Create Sample Student</button>
+              <div class="muted">RFID Tag: <span class="mono">STU000001</span></div>
+              <div style="margin-top:8px">
+                <button class="btn-student" id="createTenStudentsBtn"><i class="fas fa-users"></i> Create 10 Sample Students</button>
+                <div class="muted">IDs: ST2024002..ST2024011 • RFID: STU000002..STU000011</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <button class="btn-staff" id="signOutBtn"><i class="fas fa-sign-out-alt"></i> Sign out</button>
+        </div>
+        <h4 style="margin-top:20px">Logs</h4>
+        <div id="log" class="log"></div>
+      </section>
+    </main>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
+    <script>
+      const firebaseConfig = {
+        apiKey: "AIzaSyDNKHjmGKMTJhTGWqI-i8VzaqwVxvnb7tw",
+        authDomain: "nextgenlibraryhub.firebaseapp.com",
+        projectId: "nextgenlibraryhub",
+        storageBucket: "nextgenlibraryhub.appspot.com",
+        messagingSenderId: "18107313735",
+        appId: "1:18107313735:web:54edbb5aca14ca66670b62",
+        measurementId: "G-VHRJSKY7W5",
+      };
+      firebase.initializeApp(firebaseConfig);
+      firebase.auth().setPersistence(firebase.auth.Auth.Persistence.SESSION).catch(console.error);
+      const auth = firebase.auth();
+      const db = firebase.firestore();
+
+      const logEl = document.getElementById('log');
+      function log(msg){ logEl.textContent += (msg + "\n"); logEl.scrollTop = logEl.scrollHeight; }
+
+      let LIB_ID = null;
+      let librarianDoc = null;
+
+      auth.onAuthStateChanged(async (user) => {
+        if (!user) { window.location.href = 'adminlogin.html'; return; }
+        const doc = await db.collection('librarians').doc(user.uid).get();
+        if (!doc.exists) { await auth.signOut(); window.location.href = 'adminlogin.html'; return; }
+        librarianDoc = doc.data();
+        LIB_ID = librarianDoc.libraryId || user.uid;
+        document.getElementById('libScope').textContent = LIB_ID;
+        log(`Signed in as ${librarianDoc.fullName || user.email} (LIB_ID=${LIB_ID})`);
+      });
+
+      document.getElementById('signOutBtn').addEventListener('click', ()=> auth.signOut().then(()=> window.location.href='adminlogin.html'));
+
+      async function importBooksFromArray(arr){
+        if (!LIB_ID) { log('No LIB_ID set'); return; }
+        let created = 0, skipped = 0;
+        for (const item of arr){
+          const title = (item.title||'').trim();
+          const author = (item.author||'').trim();
+          const isbn = (item.isbn||'').trim();
+          const category = (item.category||'reference').trim();
+          if (!title || !author || !isbn){ skipped++; continue; }
+          try {
+            // prevent duplicates by ISBN within library
+            const dup = await db.collection('books')
+              .where('libraryId','==',LIB_ID)
+              .where('isbn','==',isbn)
+              .limit(1)
+              .get();
+            if (!dup.empty){ skipped++; continue; }
+            await db.collection('books').add({
+              title, author, isbn, category,
+              status: 'available', addedDate: new Date(), libraryId: LIB_ID
+            });
+            created++;
+          } catch(e){ log(`Create failed for ISBN ${isbn}: ${e.message}`); }
+        }
+        log(`Import done: created=${created}, skipped=${skipped}`);
+      }
+
+      async function backfillCollection(collName) {
+        if (!LIB_ID) { log('No LIB_ID set'); return; }
+        log(`Scanning ${collName} for missing libraryId...`);
+        const snap = await db.collection(collName).limit(500).get();
+        let updated = 0; let skipped = 0;
+        for (const d of snap.docs) {
+          const data = d.data();
+          if (!data.libraryId) {
+            try {
+              await db.collection(collName).doc(d.id).set({ libraryId: LIB_ID }, { merge: true });
+              updated++;
+            } catch (e) {
+              log(`Failed to update ${collName}/${d.id}: ${e.message}`);
+            }
+          } else {
+            skipped++;
+          }
+        }
+        log(`Done ${collName}: updated=${updated}, skipped=${skipped}`);
+      }
+
+      document.getElementById('fixLibrarianBtn').addEventListener('click', async ()=>{
+        const user = auth.currentUser;
+        if (!user) return;
+        const ref = db.collection('librarians').doc(user.uid);
+        const doc = await ref.get();
+        const data = doc.data() || {};
+        if (!data.libraryId) {
+          await ref.set({ libraryId: user.uid }, { merge: true });
+          LIB_ID = user.uid;
+          document.getElementById('libScope').textContent = LIB_ID;
+          log('Set libraryId on your librarian profile.');
+        } else {
+          log('Librarian profile already has libraryId.');
+        }
+      });
+
+      document.getElementById('fixBooksBtn').addEventListener('click', ()=> backfillCollection('books'));
+      document.getElementById('fixLoansBtn').addEventListener('click', ()=> backfillCollection('loans'));
+      document.getElementById('fixFinesBtn').addEventListener('click', ()=> backfillCollection('fines'));
+      document.getElementById('fixStudentsBtn').addEventListener('click', ()=> backfillCollection('students'));
+
+      // Import handlers
+      function parseCsv(text){
+        const lines = text.split(/\r?\n/).filter(l=>l.trim().length>0);
+        if (lines.length === 0) return [];
+        const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
+        const idx = {
+          title: headers.indexOf('title'),
+          author: headers.indexOf('author'),
+          isbn: headers.indexOf('isbn'),
+          category: headers.indexOf('category')
+        };
+        const rows = [];
+        for (let i=1;i<lines.length;i++){
+          const cols = lines[i].split(',');
+          rows.push({
+            title: idx.title>=0? cols[idx.title].trim(): '',
+            author: idx.author>=0? cols[idx.author].trim(): '',
+            isbn: idx.isbn>=0? cols[idx.isbn].trim(): '',
+            category: idx.category>=0? cols[idx.category].trim(): 'reference'
+          });
+        }
+        return rows;
+      }
+
+      document.getElementById('importBooksBtn').addEventListener('click', async ()=>{
+        const fileInput = document.getElementById('booksFile');
+        const file = fileInput.files && fileInput.files[0];
+        if (!file){ log('Choose a .json or .csv file first'); return; }
+        const text = await file.text();
+        try{
+          let arr = [];
+          if (file.name.toLowerCase().endsWith('.json')){
+            arr = JSON.parse(text);
+          } else if (file.name.toLowerCase().endsWith('.csv')){
+            arr = parseCsv(text);
+          } else {
+            log('Unsupported file type'); return;
+          }
+          log(`Importing ${arr.length} books from ${file.name}...`);
+          await importBooksFromArray(arr);
+        } catch(e){ log('Import failed: '+ e.message); }
+      });
+
+      document.getElementById('loadSampleBtn').addEventListener('click', async ()=>{
+        try{
+          const res = await fetch('data/sample-books.json', { cache: 'no-store' });
+          const arr = await res.json();
+          log(`Loading sample dataset (${arr.length} books)...`);
+          await importBooksFromArray(arr);
+        } catch(e){ log('Failed to load sample data: '+ e.message); }
+      });
+
+      // Create sample student with known RFID tag for scanner testing
+      document.getElementById('createSampleStudentBtn').addEventListener('click', async ()=>{
+        if (!LIB_ID) { log('No LIB_ID set'); return; }
+        const tag = 'STU000001';
+        try {
+          const existing = await db.collection('students').where('rfidTag','==',tag).limit(1).get();
+          if (!existing.empty) { log('Sample student already exists.'); return; }
+          const payload = {
+            fullName: 'Test Student',
+            studentId: 'ST2024001',
+            email: 'test.student@example.com',
+            phone: '263771234567',
+            grade: 'grade10',
+            rfidTag: tag,
+            accountType: 'student',
+            status: 'active',
+            createdAt: new Date(),
+            libraryId: LIB_ID
+          };
+          await db.collection('students').add(payload);
+          log('Created sample student with RFID STU000001');
+        } catch(e){ log('Failed to create sample student: '+ e.message); }
+      });
+
+      // Create 10 sample students with sequential IDs and RFID tags
+      document.getElementById('createTenStudentsBtn').addEventListener('click', async ()=>{
+        if (!LIB_ID) { log('No LIB_ID set'); return; }
+        let created = 0, skipped = 0;
+        for (let i=2;i<=11;i++){
+          const idx = String(i).padStart(6,'0');
+          const studentId = `ST2024${idx}`; // e.g., ST2024000002
+          const tag = `STU${String(i).padStart(6,'0')}`; // STU000002..
+          try {
+            const dup = await db.collection('students').where('rfidTag','==',tag).limit(1).get();
+            if (!dup.empty) { skipped++; continue; }
+            const payload = {
+              fullName: `Sample Student ${i}`,
+              studentId,
+              email: `student${i}@example.com`,
+              phone: `26377123${String(4500+i).padStart(4,'0')}`,
+              grade: i % 2 === 0 ? 'grade10' : 'grade11',
+              rfidTag: tag,
+              accountType: 'student',
+              status: 'active',
+              createdAt: new Date(),
+              libraryId: LIB_ID
+            };
+            await db.collection('students').add(payload);
+            created++;
+          } catch(e){ log(`Failed student ${i}: `+ e.message); }
+        }
+        log(`Created ${created} students, skipped ${skipped} (already exist).`);
+      });
+    </script>
+  </body>
+</html>

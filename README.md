@@ -1,2 +1,1 @@
-# NextGenLibrary
-Online Library System for schools
+# NextGen-Library-Hub
